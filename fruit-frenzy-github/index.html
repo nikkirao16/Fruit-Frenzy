@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body { margin: 0; } img { max-width: 100%; } [hidden] { display: none !important; }</style>
+<title>Fruit Frenzy Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800;900&display=swap">
+<style>
+/* Layout: one-screen game — chunky HUD strip on top, clickable orchard stage on the left, tabbed shop panel on the right (stacks on phones).
+   Single bright "block game" world by choice, so no dark-theme variant. */
+:root {
+  --ink: #1b2330;
+  --frame: #26354d;
+  --sky: #8fd3ff;
+  --sky-hi: #dff3ff;
+  --grass: #5cc53a;
+  --grass-d: #3f9c25;
+  --leaf: #46b52c;
+  --leaf-d: #2f8a1d;
+  --bark: #8d5a2b;
+  --panel: #ffffff;
+  --panel-2: #eef3f8;
+  --muted: #5b6878;
+  --gold: #ffc928;
+  --gold-d: #e09b00;
+  --sell: #ff5a3c;
+  --sell-d: #c93a20;
+  --buy: #2fbf4f;
+  --buy-d: #1d8c36;
+  --blue: #3a8dff;
+  --white: #ffffff;
+  --display: "Lilita One", "Arial Black", Impact, system-ui, sans-serif;
+  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--frame);
+  color: var(--ink);
+  font-family: var(--body);
+  font-weight: 700;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------- HUD ---------- */
+.hud { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.logo {
+  font-family: var(--display);
+  font-size: 1.6rem;
+  color: var(--gold);
+  -webkit-text-stroke: 1.5px var(--ink);
+  text-shadow: 0 3px 0 var(--ink);
+  letter-spacing: 0.5px;
+  margin-right: auto;
+  line-height: 1;
+}
+.logo span { color: var(--white); }
+.chip {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 4px 0 var(--ink);
+  padding: 4px 12px 4px 6px;
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  min-height: 42px;
+}
+.chip .ico {
+  width: 28px; height: 28px; display: grid; place-items: center;
+  border-radius: 8px; border: 2px solid var(--ink); font-size: 16px;
+}
+.chip small { font-family: var(--body); font-size: 0.7rem; color: var(--muted); display: block; line-height: 1; text-transform: uppercase; letter-spacing: 0.6px; }
+.coin { background: var(--gold); }
+.chip-basket { min-width: 170px; }
+.bbar { width: 100%; height: 10px; border: 2px solid var(--ink); border-radius: 6px; background: var(--panel-2); overflow: hidden; margin-top: 2px; }
+.bbar i { display: block; height: 100%; width: 0; background: var(--buy); transition: width .15s; }
+.chip-basket.full .bbar i { background: var(--sell); }
+.chip-basket.full { animation: pulse .6s infinite alternate; }
+@keyframes pulse { to { transform: scale(1.04); } }
+
+/* ---------- Main ---------- */
+main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 410px); gap: 12px; min-height: 0; }
+
+/* ---------- Stage ---------- */
+.stage {
+  position: relative; overflow: hidden;
+  border: 4px solid var(--ink); border-radius: 18px;
+  box-shadow: 0 6px 0 var(--ink);
+  background: linear-gradient(var(--sky-hi), var(--sky) 60%);
+  user-select: none; -webkit-user-select: none;
+  touch-action: manipulation; cursor: pointer;
+  min-height: 360px;
+}
+.sun { position: absolute; top: 6%; right: 8%; width: 70px; height: 70px; background: var(--gold); border: 4px solid var(--ink); border-radius: 16px; transform: rotate(12deg); box-shadow: inset -8px -8px 0 var(--gold-d); }
+.cloud { position: absolute; height: 34px; background: var(--white); border: 4px solid var(--ink); border-radius: 12px; animation: drift 40s linear infinite; }
+.cloud.c1 { top: 12%; width: 120px; left: -130px; }
+.cloud.c2 { top: 26%; width: 80px; left: -130px; animation-duration: 55s; animation-delay: -25s; }
+@keyframes drift { to { transform: translateX(calc(100cqw + 280px)); } }
+.stage { container-type: inline-size; }
+.hill { position: absolute; left: -10%; right: -10%; bottom: 14%; height: 30%; background: var(--grass-d); border: 4px solid var(--ink); border-radius: 50% 50% 0 0 / 100% 100% 0 0; opacity: .55; }
+.ground { position: absolute; left: 0; right: 0; bottom: 0; height: 24%; background: var(--grass); border-top: 4px solid var(--ink);
+  background-image: linear-gradient(90deg, transparent 0 46px, var(--grass-d) 46px 50px); background-size: 50px 100%; }
+
+.tree { position: absolute; left: 50%; bottom: 18%; width: min(58%, 360px); aspect-ratio: 1 / 1.05; transform: translateX(-50%); transform-origin: 50% 100%; pointer-events: none; }
+.tree.bop { animation: bop .18s ease-out; }
+@keyframes bop { 40% { transform: translateX(-50%) scale(1.04, .96); } }
+.trunk { position: absolute; left: 41%; width: 18%; bottom: 0; height: 44%; background: var(--bark); border: 4px solid var(--ink); border-radius: 6px; box-shadow: inset -10px 0 0 #6d421c; }
+.leaf { position: absolute; background: var(--leaf); border: 4px solid var(--ink); border-radius: 22%; box-shadow: inset -12px -12px 0 var(--leaf-d), inset 8px 8px 0 #66cf4a; }
+.l1 { left: 2%; top: 22%; width: 52%; height: 44%; }
+.l2 { right: 2%; top: 22%; width: 52%; height: 44%; }
+.l3 { left: 19%; top: 0; width: 62%; height: 50%; }
+.spot { position: absolute; font-size: clamp(22px, 4.2cqw, 36px); line-height: 1; transform: translate(-50%, -50%); transition: transform .2s; filter: drop-shadow(0 2px 0 rgba(27,35,48,.5)); }
+.spot.drop { animation: drop .35s ease-in forwards; }
+@keyframes drop { to { transform: translate(-50%, 120%) scale(.4); opacity: 0; } }
+
+.orchard-tag { position: absolute; top: 12px; left: 12px; background: var(--panel); border: 3px solid var(--ink); border-radius: 10px; padding: 4px 10px; font-family: var(--display); font-size: 1rem; box-shadow: 0 3px 0 var(--ink); }
+.orchard-tag small { display: block; font-family: var(--body); font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+.hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); font-family: var(--display); color: var(--white); -webkit-text-stroke: 1px var(--ink); text-shadow: 0 2px 0 var(--ink); font-size: 1.2rem; white-space: nowrap; animation: hintb 1.2s infinite alternate; transition: opacity .4s; }
+@keyframes hintb { to { transform: translateX(-50%) translateY(4px); } }
+
+.sell {
+  position: absolute; right: 14px; bottom: 14px;
+  font-family: var(--display); font-size: 1.5rem; color: var(--white);
+  background: var(--sell); border: 4px solid var(--ink); border-radius: 14px;
+  padding: 8px 18px 10px; box-shadow: 0 6px 0 var(--ink), inset 0 -6px 0 var(--sell-d);
+  -webkit-text-stroke: 1px var(--ink); line-height: 1.05; text-align: center;
+}
+.sell small { display: block; font-size: .95rem; color: var(--gold); }
+.sell:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--ink), inset 0 -6px 0 var(--sell-d); }
+.sell.nudge { animation: nudge .5s; }
+@keyframes nudge { 25% { transform: rotate(-6deg) scale(1.08); } 75% { transform: rotate(6deg) scale(1.08); } }
+
+.petrow { position: absolute; left: 14px; bottom: 16px; display: flex; gap: 6px; pointer-events: none; }
+.pet { display: grid; justify-items: center; font-size: 34px; line-height: 1; animation: hop .9s ease-in-out infinite; filter: drop-shadow(0 3px 0 rgba(27,35,48,.45)); }
+.pet:nth-child(2) { animation-delay: -.3s; }
+.pet:nth-child(3) { animation-delay: -.6s; }
+.pet b { font-family: var(--display); font-weight: 400; font-size: .8rem; color: var(--white); -webkit-text-stroke: .6px var(--ink); text-shadow: 0 2px 0 var(--ink); margin-top: 2px; }
+@keyframes hop { 50% { transform: translateY(-10px); } }
+
+.float { position: absolute; pointer-events: none; font-family: var(--display); font-size: 1.4rem; color: var(--white); -webkit-text-stroke: 1px var(--ink); text-shadow: 0 2px 0 var(--ink); transform: translate(-50%, -50%); animation: rise .9s ease-out forwards; white-space: nowrap; z-index: 5; }
+.float.money { color: var(--gold); font-size: 1.7rem; }
+.float.full { color: var(--sell); }
+@keyframes rise { to { transform: translate(-50%, -160%); opacity: 0; } }
+
+.toast { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; pointer-events: none; z-index: 6; width: 90%; }
+.toast div { background: var(--ink); color: var(--white); border-radius: 10px; padding: 6px 14px; font-family: var(--display); font-size: 1.05rem; animation: tin 2.6s forwards; text-align: center; border: 3px solid var(--tc, var(--gold)); }
+@keyframes tin { 0% { transform: scale(.6); opacity: 0; } 10% { transform: scale(1.08); opacity: 1; } 18% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+
+/* ---------- Panel ---------- */
+.panel { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border: 4px solid var(--ink); border-radius: 18px; box-shadow: 0 6px 0 var(--ink); overflow: hidden; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px 12px 14px; background: var(--panel-2); border-bottom: 4px solid var(--ink); }
+.tab { position: relative; display: grid; justify-items: center; gap: 3px; font-family: var(--display); font-size: .95rem; padding: 8px 4px 7px; border: 3px solid var(--ink); border-radius: 12px; background: var(--panel); box-shadow: 0 4px 0 var(--ink); transition: transform .08s; }
+.tab .ti { font-size: 22px; line-height: 1; }
+.tab:hover { background: #f7fafc; }
+.tab[aria-selected="true"] { background: var(--tabc); color: var(--white); -webkit-text-stroke: .5px var(--ink); transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+.badge { position: absolute; top: -9px; right: -7px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--sell); color: var(--white); border: 2px solid var(--ink); font-family: var(--body); font-weight: 900; font-size: .75rem; display: grid; place-items: center; -webkit-text-stroke: 0; animation: bounce .7s infinite alternate; }
+@keyframes bounce { to { transform: translateY(-3px); } }
+.tabbody { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: grid; align-content: start; gap: 10px; }
+.thead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 10px; border-bottom: 3px solid var(--panel-2); }
+.xbtn { flex: none; width: 36px; height: 36px; display: grid; place-items: center; font-family: var(--display); font-size: 1.1rem; line-height: 1; border: 3px solid var(--ink); border-radius: 10px; background: var(--panel-2); box-shadow: 0 3px 0 var(--ink); padding: 0; }
+.xbtn:hover { background: var(--sell); color: var(--white); }
+.xbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+/* closed shop: stage takes the room, tabs shrink to a slim dock */
+main.closed { grid-template-columns: minmax(0, 1fr) 104px; }
+main.closed .panel { background: var(--panel-2); }
+main.closed .tabs { grid-template-columns: 1fr; align-content: start; gap: 12px; border-bottom: 0; flex: 1; }
+.thead h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 1.5rem; line-height: 1.1; text-wrap: balance; }
+.thead p { margin: 2px 0 0; color: var(--muted); font-size: .85rem; line-height: 1.35; }
+.summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 3px solid var(--ink); border-radius: 12px; background: #fff6d8; }
+.summary b { font-family: var(--display); font-weight: 400; font-size: 1.25rem; }
+.summary small { display: block; color: var(--muted); font-size: .75rem; }
+.claim { font-family: var(--display); font-size: .9rem; color: var(--ink); background: var(--gold); border: 3px solid var(--ink); border-radius: 9px; padding: 4px 10px; box-shadow: 0 3px 0 var(--ink), inset 0 -3px 0 var(--gold-d); white-space: nowrap; animation: glow 1s infinite alternate; }
+.claim:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+@keyframes glow { to { box-shadow: 0 3px 0 var(--ink), inset 0 -3px 0 var(--gold-d), 0 0 0 4px rgba(255, 201, 40, .45); } }
+.done { font-size: .78rem; color: var(--buy-d); font-weight: 900; white-space: nowrap; }
+.coll { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.ctile { display: grid; justify-items: center; align-content: start; gap: 4px; padding: 8px 4px; border: 3px solid var(--tc); border-radius: 12px; background: var(--panel); text-align: center; }
+.ctile .pe { font-size: 30px; line-height: 1.1; }
+.ctile .pn { font-size: .74rem; }
+.ctile.unseen { border-color: #d3dbe4; border-style: dashed; }
+.ctile.unseen .pe { filter: brightness(0) opacity(.3); }
+
+.card { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px; border: 3px solid var(--ink); border-radius: 12px; background: var(--panel); }
+.card.special { background: #f1fbe9; border-color: var(--leaf-d); }
+.card .ic { width: 46px; height: 46px; display: grid; place-items: center; font-size: 26px; background: var(--panel-2); border: 3px solid var(--ink); border-radius: 10px; }
+.card h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 1.08rem; line-height: 1.1; }
+.card h3 em { font-style: normal; font-family: var(--body); font-size: .72rem; color: var(--white); background: var(--ink); border-radius: 6px; padding: 1px 6px; margin-left: 4px; vertical-align: 2px; }
+.card p { margin: 2px 0 0; font-size: .82rem; color: var(--muted); line-height: 1.3; }
+.card p b { color: var(--ink); }
+.buy { font-family: var(--display); font-size: 1.02rem; color: var(--white); background: var(--buy); border: 3px solid var(--ink); border-radius: 10px; padding: 7px 12px; box-shadow: 0 4px 0 var(--ink), inset 0 -4px 0 var(--buy-d); -webkit-text-stroke: .5px var(--ink); white-space: nowrap; min-width: 84px; font-variant-numeric: tabular-nums; }
+.buy:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink), inset 0 -4px 0 var(--buy-d); }
+.buy:disabled { background: #b9c3cf; box-shadow: 0 4px 0 var(--ink), inset 0 -4px 0 #98a3b0; cursor: not-allowed; }
+.buy.max { background: var(--gold); color: var(--ink); -webkit-text-stroke: 0; }
+.buy.warn { background: var(--sell); box-shadow: 0 4px 0 var(--ink), inset 0 -4px 0 var(--sell-d); }
+.sec { font-family: var(--display); font-size: .95rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin: 6px 2px 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sec .mini { font-family: var(--display); font-size: .85rem; text-transform: none; letter-spacing: 0; padding: 4px 10px; border: 3px solid var(--ink); border-radius: 8px; background: var(--gold); box-shadow: 0 3px 0 var(--ink); color: var(--ink); }
+
+/* eggs */
+.egg { width: 40px; height: 50px; border: 3px solid var(--ink); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.8) 0 12%, transparent 13%),
+              radial-gradient(circle at 65% 62%, var(--spot) 0 12%, transparent 13%),
+              radial-gradient(circle at 30% 72%, var(--spot) 0 9%, transparent 10%),
+              var(--egg); }
+.card .ic.eggic { background: transparent; border: 0; }
+.odds { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.odds span { font-size: .74rem; border: 2px solid var(--tc); border-radius: 7px; padding: 0 5px; background: var(--panel); white-space: nowrap; }
+
+.pets { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; }
+.ptile { position: relative; }
+.ptile > button.eq { width: 100%; display: grid; justify-items: center; gap: 1px; padding: 8px 4px 6px; border: 3px solid var(--tc); border-radius: 12px; background: var(--panel); box-shadow: 0 3px 0 var(--ink); }
+.ptile > button.eq .pe { font-size: 30px; line-height: 1.1; }
+.ptile > button.eq .pn { font-size: .72rem; }
+.ptile > button.eq .pm { font-family: var(--display); font-size: .9rem; color: var(--buy-d); }
+.ptile.on > button.eq { background: #e6f6ff; box-shadow: 0 3px 0 var(--ink), inset 0 0 0 3px var(--blue); }
+.ptile.on::after { content: "EQUIPPED"; position: absolute; top: -7px; left: 50%; transform: translateX(-50%); font-size: .58rem; letter-spacing: .6px; background: var(--blue); color: var(--white); border: 2px solid var(--ink); border-radius: 6px; padding: 0 4px; }
+.ptile .rel { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--ink); background: var(--panel); font-size: .75rem; line-height: 1; padding: 0; display: grid; place-items: center; }
+.ptile .rel:hover { background: var(--sell); color: var(--white); }
+.empty { text-align: center; color: var(--muted); padding: 14px; border: 3px dashed #c5cfda; border-radius: 12px; font-size: .9rem; }
+
+/* index */
+.frow { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 10px; border: 3px solid var(--panel-2); }
+.frow .fe { font-size: 28px; text-align: center; }
+.frow.unseen .fe { filter: brightness(0) opacity(.35); }
+.frow.locked { opacity: .55; }
+.frow .nm { font-family: var(--display); font-size: 1rem; }
+.frow .rt { font-size: .74rem; }
+.frow .vv { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--display); font-size: .95rem; }
+.frow .vv small { display: block; font-family: var(--body); color: var(--muted); font-size: .72rem; }
+
+.big { padding: 14px; border: 3px solid var(--ink); border-radius: 14px; background: linear-gradient(135deg, #fff6d8, #ffe7f0); display: grid; gap: 10px; }
+.big h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 1.5rem; }
+.big p { margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.4; }
+.statrow { display: flex; justify-content: space-between; font-size: .9rem; padding: 6px 4px; border-bottom: 2px solid var(--panel-2); font-variant-numeric: tabular-nums; }
+.statrow b { font-family: var(--display); font-weight: 400; }
+.prog { height: 14px; border: 3px solid var(--ink); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.prog i { display: block; height: 100%; background: var(--gold); }
+
+.r-secret { background: linear-gradient(90deg, #ff3d7f, #ffb020, #3fd16b, #3a8dff, #a64dff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.fx-gold { filter: sepia(1) saturate(5) hue-rotate(-8deg) brightness(1.15) drop-shadow(0 0 4px #ffd84a); }
+.fx-rainbow { animation: hue 1.6s linear infinite; }
+@keyframes hue { from { filter: hue-rotate(0) drop-shadow(0 0 4px #ff6bf0); } to { filter: hue-rotate(360deg) drop-shadow(0 0 4px #ff6bf0); } }
+
+/* hatch overlay */
+.overlay { position: fixed; inset: 0; background: rgba(15, 22, 34, .72); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.hatchbox { background: var(--panel); border: 4px solid var(--ink); border-radius: 20px; box-shadow: 0 8px 0 var(--ink); padding: 24px 28px; display: grid; justify-items: center; gap: 10px; min-width: min(300px, 100%); text-align: center; }
+.hatchbox .egg { width: 110px; height: 136px; border-width: 5px; }
+.hatchbox .egg.shake { animation: shake .12s infinite alternate; }
+@keyframes shake { from { transform: rotate(-9deg); } to { transform: rotate(9deg) translateY(-3px); } }
+.hpet { font-size: 96px; line-height: 1; animation: reveal .45s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes reveal { from { transform: scale(0) rotate(-30deg); } }
+.hname { font-family: var(--display); font-size: 1.6rem; }
+.hsub { color: var(--muted); font-size: .95rem; }
+
+@media (max-width: 820px) {
+  .app { height: auto; min-height: 100%; }
+  main { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: min(68vh, 520px); }
+  .tabbody { max-height: none; overflow: visible; }
+  main.closed { grid-template-columns: minmax(0, 1fr); }
+  main.closed .tabs { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .logo { width: 100%; }
+}
+@media (max-width: 440px) {
+  .chip { font-size: 1rem; }
+  .chip-basket { min-width: 140px; flex: 1; }
+  .sell { font-size: 1.25rem; }
+  .pet { font-size: 28px; }
+  .tab { font-size: .9rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition: none !important; }
+}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <header class="hud">
+    <div class="logo">Fruit Frenzy <span>Simulator</span></div>
+    <div class="chip"><div class="ico coin">$</div><div><small>Cash</small><span id="money">$0</span></div></div>
+    <div class="chip chip-basket" id="basketChip"><div class="ico" style="background:#f6d39a">🧺</div><div style="flex:1"><small>Basket</small><span id="bText">0 / 20</span><div class="bbar"><i id="bFill"></i></div></div></div>
+    <div class="chip"><div class="ico" style="background:#c9f0b8">×</div><div><small>Fruit value</small><span id="mult">×1</span></div></div>
+    <div class="chip"><div class="ico" style="background:#d8e6ff">⚡</div><div><small>Auto pick</small><span id="autoRate">0/s</span></div></div>
+  </header>
+
+  <main id="main">
+    <section class="stage" id="stage" aria-label="Orchard. Click or press Space to pick fruit.">
+      <div class="sun"></div>
+      <div class="cloud c1"></div><div class="cloud c2"></div>
+      <div class="hill"></div>
+      <div class="ground"></div>
+      <div class="tree" id="tree">
+        <div class="trunk"></div>
+        <div class="leaf l3"></div><div class="leaf l1"></div><div class="leaf l2"></div>
+        <div id="spots"></div>
+      </div>
+      <div class="orchard-tag"><small>Orchard</small><span id="orchName">Starter Patch</span></div>
+      <div class="hint" id="hint">Tap anywhere to pick fruit!</div>
+      <div class="toast" id="toast"></div>
+      <div class="petrow" id="petrow"></div>
+      <button class="sell" id="sellBtn" type="button">SELL<small id="sellVal">$0</small></button>
+      <div id="fx"></div>
+    </section>
+
+    <section class="panel">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="upgrades" id="t-upgrades" style="--tabc:var(--buy)"><span class="ti">⬆️</span>Upgrades<span class="badge" hidden></span></button>
+        <button class="tab" role="tab" data-tab="pets" id="t-pets" style="--tabc:#a64dff"><span class="ti">🐾</span>Pets<span class="badge" hidden></span></button>
+        <button class="tab" role="tab" data-tab="index" id="t-index" style="--tabc:#ff9a1f"><span class="ti">🍉</span>Fruits<span class="badge" hidden></span></button>
+        <button class="tab" role="tab" data-tab="rebirth" id="t-rebirth" style="--tabc:#ff3d7f"><span class="ti">🔄</span>Rebirth<span class="badge" hidden></span></button>
+      </div>
+      <div class="tabbody" id="tabbody" role="tabpanel"></div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="hatch" hidden>
+  <div class="hatchbox">
+    <div id="hEggWrap"><div class="egg" id="hEgg"></div></div>
+    <div id="hReveal" hidden>
+      <div class="hpet" id="hPet"></div>
+      <div class="hname" id="hName"></div>
+      <div class="hsub" id="hSub"></div>
+    </div>
+    <div class="hsub" id="hStatus">Hatching…</div>
+    <button class="buy" id="hOk" type="button" hidden>Awesome!</button>
+  </div>
+</div>
+
+<script>
+(() => {
+const TIERS = [
+  { n: 'Common', c: '#8d99a6' },
+  { n: 'Uncommon', c: '#3fb52e' },
+  { n: 'Rare', c: '#3a8dff' },
+  { n: 'Epic', c: '#a64dff' },
+  { n: 'Legendary', c: '#ff9a1f' },
+  { n: 'Mythic', c: '#ff3d7f' },
+  { n: 'Secret', c: '#e040fb', cls: 'r-secret' },
+];
+
+const ORCHARDS = [
+  { n: 'Starter Patch', cost: 0 },
+  { n: 'Citrus Grove', cost: 500 },
+  { n: 'Berry Farm', cost: 6000 },
+  { n: 'Melon Meadow', cost: 60000 },
+  { n: 'Tropical Island', cost: 500000 },
+  { n: 'Golden Garden', cost: 4000000 },
+  { n: 'Cosmic Orchard', cost: 30000000 },
+];
+
+// v = base sell price, w = base drop weight, lvl = orchard level that unlocks it
+const FRUITS = [
+  { id: 'apple', n: 'Apple', e: '🍎', v: 1, w: 100, tier: 0, lvl: 0 },
+  { id: 'banana', n: 'Banana', e: '🍌', v: 2, w: 60, tier: 0, lvl: 0 },
+  { id: 'orange', n: 'Orange', e: '🍊', v: 5, w: 40, tier: 1, lvl: 1 },
+  { id: 'grapes', n: 'Grapes', e: '🍇', v: 8, w: 28, tier: 1, lvl: 1 },
+  { id: 'strawberry', n: 'Strawberry', e: '🍓', v: 15, w: 15, tier: 2, lvl: 2 },
+  { id: 'peach', n: 'Peach', e: '🍑', v: 24, w: 10, tier: 2, lvl: 2 },
+  { id: 'watermelon', n: 'Watermelon', e: '🍉', v: 50, w: 5, tier: 3, lvl: 3 },
+  { id: 'pineapple', n: 'Pineapple', e: '🍍', v: 85, w: 3.5, tier: 3, lvl: 3 },
+  { id: 'mango', n: 'Mango', e: '🥭', v: 180, w: 1.6, tier: 4, lvl: 4 },
+  { id: 'coconut', n: 'Coconut', e: '🥥', v: 300, w: 1, tier: 4, lvl: 4 },
+  { id: 'golden', n: 'Golden Apple', e: '🍏', fx: 'gold', v: 800, w: 0.4, tier: 5, lvl: 5 },
+  { id: 'cosmic', n: 'Cosmic Cherry', e: '🍒', fx: 'rainbow', v: 2500, w: 0.12, tier: 6, lvl: 6 },
+];
+const FMAP = Object.fromEntries(FRUITS.map(f => [f.id, f]));
+
+const UPGRADES = [
+  { id: 'auto', grp: 'Picking', ic: '🖱️', n: 'Auto Clicker', base: 15, g: 1.9, max: 25,
+    d: l => l === 0 ? 'Picks fruit for you, <b>1 time per second</b>.' : `Picks <b>${l}/s</b> → <b>${l + 1}/s</b>` },
+  { id: 'pick', grp: 'Picking', ic: '✋', n: 'Double Pick', base: 250, g: 2.6, max: 12,
+    d: l => `Fruit per click <b>${1 + l}</b> → <b>${2 + l}</b>` },
+  { id: 'crit', grp: 'Picking', ic: '🎯', n: 'Lucky Hands', base: 400, g: 2.2, max: 15,
+    d: l => `Chance a fruit comes as a pair <b>${critAt(l)}%</b> → <b>${critAt(l + 1)}%</b>` },
+  { id: 'luck', grp: 'Picking', ic: '🍀', n: 'Lucky Soil', base: 200, g: 2.0, max: 20,
+    d: l => `Rare fruit chance <b>×${fmtM(luckBoost(l, 3))}</b> → <b>×${fmtM(luckBoost(l + 1, 3))}</b> (Epic)` },
+  { id: 'shiny', grp: 'Picking', ic: '✨', n: 'Golden Touch', base: 1500, g: 2.3, max: 20,
+    d: l => `Chance a fruit is Shiny and sells for <b>×5</b>: <b>${l}%</b> → <b>${l + 1}%</b>` },
+  { id: 'juice', grp: 'Selling', ic: '🧃', n: 'Juicier Fruit', base: 60, g: 1.75, max: 60,
+    d: l => `Sell value <b>×${fmtM(1 + .15 * l)}</b> → <b>×${fmtM(1 + .15 * (l + 1))}</b>` },
+  { id: 'basket', grp: 'Selling', ic: '🧺', n: 'Bigger Basket', base: 40, g: 1.7, max: 40,
+    d: l => `Holds <b>${capAt(l)}</b> → <b>${capAt(l + 1)}</b> fruit` },
+  { id: 'market', grp: 'Selling', ic: '🏪', n: 'Full Basket Bonus', base: 800, g: 2.1, max: 20,
+    d: l => `Selling a completely full basket pays <b>+${15 * l}%</b> → <b>+${15 * (l + 1)}%</b>` },
+  { id: 'autosell', grp: 'Selling', ic: '🛒', n: 'Auto Seller', base: 10000, g: 1, max: 1,
+    d: () => 'Sells your basket automatically the moment it fills up.' },
+  { id: 'slots', grp: 'Pets', ic: '🎒', n: 'Pet Slots', base: 25000, g: 12, max: 3,
+    d: l => `Equip <b>${BASE_SLOTS + l}</b> → <b>${BASE_SLOTS + l + 1}</b> pets at once` },
+  { id: 'eggluck', grp: 'Pets', ic: '🥚', n: 'Egg Luck', base: 5000, g: 2.4, max: 10,
+    d: l => `Rarest pet in every egg <b>×${fmtM(eggLuckAt(l, 3))}</b> → <b>×${fmtM(eggLuckAt(l + 1, 3))}</b> as likely` },
+  { id: 'storage', grp: 'Pets', ic: '🏠', n: 'Pet Storage', base: 3000, g: 3, max: 6,
+    d: l => `Hold <b>${petMaxAt(l)}</b> → <b>${petMaxAt(l + 1)}</b> pets` },
+];
+
+const PETS = {
+  dog: { n: 'Doggo', e: '🐶', m: 1.1, r: 0 },
+  cat: { n: 'Kitty', e: '🐱', m: 1.15, r: 0 },
+  bunny: { n: 'Bunny', e: '🐰', m: 1.3, r: 1 },
+  fox: { n: 'Fox', e: '🦊', m: 1.6, r: 2 },
+  monkey: { n: 'Monkey', e: '🐵', m: 1.5, r: 1 },
+  parrot: { n: 'Parrot', e: '🦜', m: 1.8, r: 2 },
+  tiger: { n: 'Tiger', e: '🐯', m: 2.4, r: 3 },
+  unicorn: { n: 'Unicorn', e: '🦄', m: 3.5, r: 4 },
+  panda: { n: 'Panda', e: '🐼', m: 3, r: 2 },
+  dino: { n: 'T-Rex', e: '🦖', m: 5, r: 3 },
+  dragon: { n: 'Dragon', e: '🐲', m: 8, r: 4 },
+  golddragon: { n: 'Golden Dragon', e: '🐉', fx: 'gold', m: 15, r: 5 },
+};
+const EGGS = [
+  { id: 'farm', n: 'Farm Egg', cost: 1000, egg: '#f6ead0', spot: '#d9b77a', pets: [['dog', 50], ['cat', 30], ['bunny', 15], ['fox', 5]] },
+  { id: 'jungle', n: 'Jungle Egg', cost: 30000, egg: '#a6e38a', spot: '#3f9c25', pets: [['monkey', 45], ['parrot', 30], ['tiger', 20], ['unicorn', 5]] },
+  { id: 'mythic', n: 'Mythic Egg', cost: 1500000, egg: '#d6b8ff', spot: '#ff6bc1', pets: [['panda', 50], ['dino', 35], ['dragon', 13], ['golddragon', 2]] },
+];
+const BASE_SLOTS = 2;
+
+const SAVE_KEY = 'fruitFrenzy.v1';
+const fresh = () => ({
+  money: 0, basket: {}, bcount: 0, bonusV: 0,
+  upg: { auto: 0, pick: 0, crit: 0, luck: 0, shiny: 0, juice: 0, basket: 0, market: 0, autosell: 0, slots: 0, eggluck: 0, storage: 0 },
+  orchard: 0, pets: [], petUid: 1, rebirths: 0,
+  stats: { earned: 0, picked: 0, clicks: 0, hatched: 0 },
+  found: {}, petsFound: {}, claimF: {}, claimP: {}, tab: 'upgrades', panelOpen: true,
+});
+const merge = d => {
+  const b = fresh();
+  const s = { ...b, ...d, upg: { ...b.upg, ...(d.upg || {}) }, stats: { ...b.stats, ...(d.stats || {}) },
+    petsFound: { ...(d.petsFound || {}) }, claimF: { ...(d.claimF || {}) }, claimP: { ...(d.claimP || {}) } };
+  s.pets.forEach(p => { s.petsFound[p.kind] = 1; });
+  return s;
+};
+
+// one-time rewards for each new fruit / pet species, plus a permanent collection bonus
+const PET_REWARD = [100, 400, 2000, 12000, 80000, 400000];
+const fruitReward = f => f.v * 25 * (1 + S.rebirths);
+const petReward = k => PET_REWARD[PETS[k].r] * (1 + S.rebirths);
+const FRUIT_BONUS = 0.03, PET_BONUS = 0.05;
+
+let S;
+const $ = s => document.querySelector(s);
+
+/* ---------- formulas ---------- */
+function fmt(n) {
+  n = Math.floor(n);
+  if (n < 1000) return String(n);
+  const u = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx'];
+  let i = -1;
+  while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+  return (n < 10 ? n.toFixed(2) : n < 100 ? n.toFixed(1) : Math.floor(n)) + u[i];
+}
+function fmtM(m) { return m < 100 ? String(Math.round(m * 100) / 100) : fmt(m); }
+const capAt = l => 15 + 10 * l + 2 * l * l;
+const luckBoost = (l, tier) => Math.pow(1 + 0.06 * l, tier);
+const critAt = l => 4 * l;
+const eggLuckAt = (l, i) => Math.pow(1 + 0.15 * l, i);
+const petMaxAt = l => 20 + 10 * l;
+const cap = () => capAt(S.upg.basket);
+const perClick = () => 1 + S.upg.pick;
+const critChance = () => critAt(S.upg.crit) / 100;
+const shinyChance = () => S.upg.shiny / 100;
+const petSlots = () => BASE_SLOTS + S.upg.slots;
+const petMax = () => petMaxAt(S.upg.storage);
+const eggWeights = egg => egg.pets.map(([k, w], i) => [k, w * eggLuckAt(S.upg.eggluck, i)]);
+const juiceMult = () => 1 + 0.15 * S.upg.juice;
+const equipped = () => S.pets.filter(p => p.eq);
+const petMult = () => 1 + equipped().reduce((a, p) => a + PETS[p.kind].m - 1, 0);
+const rebirthMult = () => 1 + S.rebirths;
+const collectionMult = () => 1 + FRUIT_BONUS * Object.keys(S.claimF).length + PET_BONUS * Object.keys(S.claimP).length;
+const totalMult = () => juiceMult() * petMult() * rebirthMult() * collectionMult();
+const pendingFruit = () => FRUITS.filter(f => S.found[f.id] && !S.claimF[f.id]);
+const pendingPets = () => Object.keys(PETS).filter(k => S.petsFound[k] && !S.claimP[k]);
+const unlocked = () => FRUITS.filter(f => f.lvl <= S.orchard);
+const weight = f => f.w * luckBoost(S.upg.luck, f.tier);
+const upgCost = (u, l) => Math.ceil(u.base * Math.pow(u.g, l));
+const rebirthCost = () => 5e6 * Math.pow(6, S.rebirths);
+const fruitHTML = (f, extra = '') => `<span class="${f.fx ? 'fx-' + f.fx : ''} ${extra}">${f.e}</span>`;
+const petHTML = p => `<span class="${p.fx ? 'fx-' + p.fx : ''}">${p.e}</span>`;
+const tierName = t => `<span class="${TIERS[t].cls || ''}" style="color:${TIERS[t].cls ? '' : TIERS[t].c}">${TIERS[t].n}</span>`;
+
+function rollFruit() {
+  const list = unlocked();
+  let tot = 0;
+  for (const f of list) tot += weight(f);
+  let r = Math.random() * tot;
+  for (const f of list) { r -= weight(f); if (r <= 0) return f; }
+  return list[list.length - 1];
+}
+function basketValue() {
+  let v = S.bonusV || 0;
+  for (const id in S.basket) v += FMAP[id].v * S.basket[id];
+  const full = S.bcount >= cap() ? 1 + 0.15 * S.upg.market : 1;
+  return v * totalMult() * full;
+}
+
+/* ---------- stage fx ---------- */
+const stage = $('#stage'), fxLayer = $('#fx'), tree = $('#tree');
+function floatAt(x, y, html, cls = '') {
+  if (fxLayer.childElementCount > 40) fxLayer.firstElementChild.remove();
+  const el = document.createElement('div');
+  el.className = 'float ' + cls;
+  el.style.left = x + 'px'; el.style.top = y + 'px';
+  el.innerHTML = html;
+  fxLayer.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+function toast(html, color) {
+  const t = $('#toast');
+  if (t.childElementCount > 2) t.firstElementChild.remove();
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  if (color) el.style.setProperty('--tc', color);
+  t.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+function bop() { tree.classList.remove('bop'); void tree.offsetWidth; tree.classList.add('bop'); }
+
+const SPOT_POS = [[22, 38], [38, 18], [62, 16], [78, 40], [50, 34], [30, 56], [70, 58]];
+let spots = [];
+function buildSpots() {
+  const box = $('#spots');
+  box.innerHTML = '';
+  spots = SPOT_POS.map(([x, y]) => {
+    const s = document.createElement('div');
+    s.className = 'spot';
+    s.style.left = x + '%'; s.style.top = y + '%';
+    box.appendChild(s);
+    return s;
+  });
+  spots.forEach(fillSpot);
+}
+function fillSpot(s) {
+  const f = rollFruit();
+  s.innerHTML = fruitHTML(f);
+  s.classList.remove('drop');
+}
+function dropSpot() {
+  const s = spots[Math.floor(Math.random() * spots.length)];
+  if (!s || s.classList.contains('drop')) return;
+  s.classList.add('drop');
+  setTimeout(() => fillSpot(s), 360);
+}
+
+/* ---------- core actions ---------- */
+let hintClicks = 0;
+function harvest(x, y, auto) {
+  let space = cap() - S.bcount;
+  if (space <= 0) {
+    if (S.upg.autosell) { sell(true); space = cap(); }
+    else {
+      if (!auto || Math.random() < 0.25) floatAt(x, y, 'FULL!', 'full');
+      if (!auto) { const b = $('#sellBtn'); b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge'); }
+      return;
+    }
+  }
+  const n = Math.min(perClick(), space);
+  let best = null, newFind = null, got = 0, shinies = 0;
+  for (let i = 0; i < n && S.bcount < cap(); i++) {
+    const f = rollFruit();
+    const k = Math.min(Math.random() < critChance() ? 2 : 1, cap() - S.bcount);
+    S.basket[f.id] = (S.basket[f.id] || 0) + k;
+    S.bcount += k; got += k;
+    S.stats.picked += k;
+    if (Math.random() < shinyChance()) { S.bonusV = (S.bonusV || 0) + f.v * 4; shinies++; }
+    if (!S.found[f.id]) { S.found[f.id] = 1; newFind = f; }
+    if (!best || f.tier > best.tier) best = f;
+  }
+  if (!auto) { S.stats.clicks++; bop(); if (++hintClicks === 8) $('#hint').style.opacity = 0; }
+  dropSpot();
+  floatAt(x, y, `+${got} ${fruitHTML(best)}${shinies ? ' ✨' : ''}`);
+  if (newFind) {
+    toast(`New fruit! ${fruitHTML(newFind)} ${newFind.n} · claim your reward in Fruits`, TIERS[newFind.tier].c);
+    if (S.tab === 'index') renderTab();
+  } else if (best.tier >= 3) {
+    toast(`${TIERS[best.tier].n} ${fruitHTML(best)} ${best.n}!`, TIERS[best.tier].c);
+  }
+  if (S.upg.autosell && S.bcount >= cap()) sell(true);
+  updateHUD();
+}
+
+function sell(auto) {
+  const v = basketValue();
+  if (v <= 0) { if (!auto) toast('Your basket is empty. Pick some fruit first!'); return; }
+  S.money += v;
+  S.stats.earned += v;
+  S.basket = {}; S.bcount = 0; S.bonusV = 0;
+  const sr = stage.getBoundingClientRect(), br = $('#sellBtn').getBoundingClientRect();
+  floatAt(br.left - sr.left + br.width / 2, br.top - sr.top - 8, '+$' + fmt(v), 'money');
+  updateHUD();
+}
+
+function autoPoint() {
+  const sr = stage.getBoundingClientRect(), tr = tree.getBoundingClientRect();
+  return [tr.left - sr.left + tr.width * (0.15 + Math.random() * 0.7), tr.top - sr.top + tr.height * (0.1 + Math.random() * 0.45)];
+}
+
+function buyUpgrade(id) {
+  const u = UPGRADES.find(x => x.id === id), l = S.upg[id];
+  if (l >= u.max) return;
+  const c = upgCost(u, l);
+  if (S.money < c) return;
+  S.money -= c;
+  S.upg[id]++;
+  if (id === 'auto' && l === 0) toast('Auto Clicker online! 🖱️', '#3a8dff');
+  renderTab(); updateHUD(); save();
+}
+function expandOrchard() {
+  const next = ORCHARDS[S.orchard + 1];
+  if (!next || S.money < next.cost) return;
+  S.money -= next.cost;
+  S.orchard++;
+  const fr = FRUITS.filter(f => f.lvl === S.orchard).map(f => fruitHTML(f)).join(' ');
+  toast(`Welcome to ${next.n}! New fruit: ${fr}`, '#3fb52e');
+  spots.forEach(fillSpot);
+  renderTab(); updateHUD(); save();
+}
+
+let hatching = false;
+function hatch(eggId) {
+  const egg = EGGS.find(e => e.id === eggId);
+  if (hatching || S.money < egg.cost || S.pets.length >= petMax()) return;
+  S.money -= egg.cost;
+  const ew = eggWeights(egg), tot = ew.reduce((a, p) => a + p[1], 0);
+  let r = Math.random() * tot, kind = ew[0][0];
+  for (const [k, w] of ew) { r -= w; if (r <= 0) { kind = k; break; } }
+  const pet = { uid: S.petUid++, kind, eq: false };
+  const isNew = !S.petsFound[kind];
+  S.petsFound[kind] = 1;
+  S.pets.push(pet);
+  S.stats.hatched++;
+  if (equipped().length < petSlots()) pet.eq = true;
+  save();
+  hatching = true;
+  const ov = $('#hatch'), eg = $('#hEgg');
+  eg.style.setProperty('--egg', egg.egg); eg.style.setProperty('--spot', egg.spot);
+  $('#hEggWrap').hidden = false; $('#hReveal').hidden = true; $('#hOk').hidden = true;
+  $('#hStatus').hidden = false; $('#hStatus').textContent = `Hatching ${egg.n}…`;
+  eg.classList.add('shake');
+  ov.hidden = false;
+  setTimeout(() => {
+    const P = PETS[kind];
+    eg.classList.remove('shake');
+    $('#hEggWrap').hidden = true; $('#hStatus').hidden = true;
+    $('#hPet').innerHTML = petHTML(P);
+    $('#hName').innerHTML = P.n;
+    $('#hName').style.color = TIERS[P.r].c;
+    $('#hSub').innerHTML = `${tierName(P.r)} pet · <b>×${P.m}</b> money${pet.eq ? ' · equipped' : ''}` +
+      (isNew ? `<br><b style="color:var(--gold-d)">NEW SPECIES!</b> Claim $${fmt(petReward(kind))} in Pet Collection.` : '');
+    $('#hReveal').hidden = false; $('#hOk').hidden = false;
+    $('#hOk').focus();
+  }, 1300);
+  renderTab(); updateHUD();
+}
+function closeHatch() {
+  if ($('#hOk').hidden) return;
+  $('#hatch').hidden = true; hatching = false;
+  renderTab(); renderPets(); updateHUD();
+}
+function toggleEquip(uid) {
+  const p = S.pets.find(x => x.uid === uid);
+  if (!p) return;
+  if (!p.eq && equipped().length >= petSlots()) { toast(`You can equip ${petSlots()} pets. Unequip one first.`); return; }
+  p.eq = !p.eq;
+  renderTab(); renderPets(); updateHUD(); save();
+}
+function equipBest() {
+  S.pets.forEach(p => p.eq = false);
+  [...S.pets].sort((a, b) => PETS[b.kind].m - PETS[a.kind].m).slice(0, petSlots()).forEach(p => p.eq = true);
+  renderTab(); renderPets(); updateHUD(); save();
+}
+function release(uid) {
+  S.pets = S.pets.filter(p => p.uid !== uid);
+  renderTab(); renderPets(); updateHUD(); save();
+}
+
+function claimFruit(ids) {
+  let cash = 0, n = 0;
+  for (const id of ids) {
+    if (!S.found[id] || S.claimF[id]) continue;
+    cash += fruitReward(FMAP[id]); S.claimF[id] = 1; n++;
+  }
+  if (!n) return;
+  S.money += cash;
+  toast(`Reward claimed! +$${fmt(cash)} and +${Math.round(n * FRUIT_BONUS * 100)}% fruit value`, '#ffc928');
+  renderTab(); save();
+}
+function claimPet(kinds) {
+  let cash = 0, n = 0;
+  for (const k of kinds) {
+    if (!S.petsFound[k] || S.claimP[k]) continue;
+    cash += petReward(k); S.claimP[k] = 1; n++;
+  }
+  if (!n) return;
+  S.money += cash;
+  toast(`Reward claimed! +$${fmt(cash)} and +${Math.round(n * PET_BONUS * 100)}% fruit value`, '#ffc928');
+  renderTab(); save();
+}
+
+let armed = null, armTimer;
+function arm(what) {
+  armed = what; renderTab();
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => { armed = null; renderTab(); }, 3500);
+}
+function rebirth() {
+  if (S.money < rebirthCost()) return;
+  if (armed !== 'rebirth') return arm('rebirth');
+  armed = null;
+  const keep = { pets: S.pets, petUid: S.petUid, rebirths: S.rebirths + 1, stats: S.stats, found: S.found,
+    petsFound: S.petsFound, claimF: S.claimF, claimP: S.claimP, tab: S.tab };
+  S = { ...fresh(), ...keep };
+  equipped().slice(petSlots()).forEach(p => { p.eq = false; });
+  toast(`Rebirth ${S.rebirths}! All fruit now sells for ×${rebirthMult()}`, '#ff3d7f');
+  spots.forEach(fillSpot);
+  renderTab(); renderPets(); updateHUD(); save();
+}
+function resetAll() {
+  if (armed !== 'reset') return arm('reset');
+  armed = null;
+  S = fresh();
+  spots.forEach(fillSpot);
+  renderTab(); renderPets(); updateHUD(); save();
+}
+
+/* ---------- rendering ---------- */
+function updateHUD() {
+  $('#money').textContent = '$' + fmt(S.money);
+  const c = cap();
+  $('#bText').textContent = `${S.bcount} / ${c}`;
+  $('#bFill').style.width = Math.min(100, S.bcount / c * 100) + '%';
+  $('#basketChip').classList.toggle('full', S.bcount >= c && !S.upg.autosell);
+  $('#mult').textContent = '×' + fmtM(totalMult());
+  $('#autoRate').textContent = S.upg.auto + '/s';
+  $('#sellVal').textContent = '$' + fmt(basketValue());
+  $('#orchName').textContent = ORCHARDS[S.orchard].n;
+  document.querySelectorAll('#tabbody [data-cost]').forEach(b => { b.disabled = S.money < +b.dataset.cost; });
+  const rp = $('#rbProg');
+  if (rp) rp.style.width = Math.min(100, S.money / rebirthCost() * 100) + '%';
+
+  const nextOrch = ORCHARDS[S.orchard + 1];
+  const canBuy = UPGRADES.filter(u => S.upg[u.id] < u.max && S.money >= upgCost(u, S.upg[u.id])).length
+    + (nextOrch && S.money >= nextOrch.cost ? 1 : 0);
+  setBadge('upgrades', canBuy);
+  setBadge('pets', pendingPets().length);
+  setBadge('index', pendingFruit().length);
+  setBadge('rebirth', S.money >= rebirthCost() ? '!' : 0);
+}
+const badgeCache = {};
+function setBadge(tab, v) {
+  if (badgeCache[tab] === v) return;
+  badgeCache[tab] = v;
+  const b = document.querySelector(`#t-${tab} .badge`);
+  b.hidden = !v;
+  b.textContent = v;
+}
+
+function renderPets() {
+  $('#petrow').innerHTML = equipped().map(p => {
+    const P = PETS[p.kind];
+    return `<div class="pet">${petHTML(P)}<b>×${P.m}</b></div>`;
+  }).join('');
+}
+
+function renderTab() {
+  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', String(S.panelOpen && t.dataset.tab === S.tab)));
+  const body = $('#tabbody');
+  $('#main').classList.toggle('closed', !S.panelOpen);
+  body.hidden = !S.panelOpen;
+  if (!S.panelOpen) { body.innerHTML = ''; updateHUD(); return; }
+  const head = (t, p) => `<div class="thead"><div><h2>${t}</h2><p>${p}</p></div><button class="xbtn" data-act="close" title="Close ${t} (Esc)" aria-label="Close ${t}">✕</button></div>`;
+  let h = '';
+  if (S.tab === 'upgrades') {
+    h += head('Upgrades', 'Spend cash to pick faster, carry more and sell for more.');
+    h += `<div class="sec">Orchard</div>`;
+    const next = ORCHARDS[S.orchard + 1];
+    if (next) {
+      const fr = FRUITS.filter(f => f.lvl === S.orchard + 1);
+      h += `<div class="card special"><div class="ic">🌱</div><div><h3>Expand Orchard <em>${S.orchard + 1}/${ORCHARDS.length - 1}</em></h3>
+        <p>Move to <b>${next.n}</b> and grow ${fr.map(f => `${fruitHTML(f)} <b>${f.n}</b> (${tierName(f.tier)})`).join(' and ')}.</p></div>
+        <button class="buy" data-act="orchard" data-cost="${next.cost}">$${fmt(next.cost)}</button></div>`;
+    } else {
+      h += `<div class="card special"><div class="ic">🌌</div><div><h3>Cosmic Orchard</h3><p>Every fruit is unlocked. Try a <b>Rebirth</b> for a permanent boost.</p></div><button class="buy max" disabled>MAX</button></div>`;
+    }
+    for (const g of ['Picking', 'Selling', 'Pets']) {
+      h += `<div class="sec">${g}</div>`;
+      for (const u of UPGRADES.filter(x => x.grp === g)) {
+        const l = S.upg[u.id], maxed = l >= u.max, c = upgCost(u, l);
+        h += `<div class="card"><div class="ic">${u.ic}</div><div><h3>${u.n} <em>Lv ${l}${u.max > 1 ? '/' + u.max : ''}</em></h3><p>${maxed && u.id !== 'autosell' ? 'Fully upgraded.' : u.d(l)}</p></div>
+          ${maxed ? `<button class="buy max" disabled>${u.id === 'autosell' ? 'OWNED' : 'MAX'}</button>` : `<button class="buy" data-act="buy" data-arg="${u.id}" data-cost="${c}">$${fmt(c)}</button>`}</div>`;
+      }
+    }
+  } else if (S.tab === 'pets') {
+    h += head('Pets', `Pets multiply what every fruit sells for. Equip up to ${petSlots()}.`);
+    const pend = pendingPets();
+    const foundN = Object.keys(S.petsFound).length, allN = Object.keys(PETS).length;
+    h += `<div class="summary"><div><small>Pet collection bonus</small><b>+${Math.round(Object.keys(S.claimP).length * PET_BONUS * 100)}%</b> <small>${foundN}/${allN} species found · +${PET_BONUS * 100}% per species claimed</small></div>
+      ${pend.length ? `<button class="claim" data-act="claimP" data-arg="${pend.join(',')}">Claim ${pend.length} reward${pend.length > 1 ? 's' : ''}</button>` : ''}</div>`;
+    h += `<div class="sec">Hatch eggs <span style="text-transform:none;letter-spacing:0">${S.pets.length}/${petMax()} pets</span></div>`;
+    for (const e of EGGS) {
+      const ew = eggWeights(e), tot = ew.reduce((a, p) => a + p[1], 0);
+      h += `<div class="card"><div class="ic eggic"><div class="egg" style="--egg:${e.egg};--spot:${e.spot}"></div></div>
+        <div><h3>${e.n}</h3><div class="odds">${ew.map(([k, w]) => { const P = PETS[k], pc = w / tot * 100; return `<span style="--tc:${TIERS[P.r].c}">${petHTML(P)} ×${P.m} · ${pc < 10 ? pc.toFixed(1) : Math.round(pc)}%</span>`; }).join('')}</div></div>
+        <button class="buy" data-act="hatch" data-arg="${e.id}" data-cost="${e.cost}" ${S.pets.length >= petMax() ? 'disabled' : ''}>$${fmt(e.cost)}</button></div>`;
+    }
+    h += `<div class="sec">Your pets · ×${fmtM(petMult())} ${S.pets.length ? '<button class="mini" data-act="best">Equip best</button>' : ''}</div>`;
+    if (!S.pets.length) h += `<div class="empty">No pets yet. Hatch a Farm Egg for $${fmt(EGGS[0].cost)} to get your first helper. Pets multiply how much money every fruit sells for.</div>`;
+    else {
+      const sorted = [...S.pets].sort((a, b) => (b.eq - a.eq) || PETS[b.kind].m - PETS[a.kind].m);
+      h += `<div class="pets">${sorted.map(p => { const P = PETS[p.kind]; return `<div class="ptile ${p.eq ? 'on' : ''}" style="--tc:${TIERS[P.r].c}">
+        <button class="eq" data-act="equip" data-arg="${p.uid}" title="${p.eq ? 'Unequip' : 'Equip'} ${P.n}"><span class="pe">${petHTML(P)}</span><span class="pn">${P.n}</span><span class="pm">×${P.m}</span></button>
+        <button class="rel" data-act="release" data-arg="${p.uid}" title="Release ${P.n}" aria-label="Release ${P.n}">✕</button></div>`; }).join('')}</div>`;
+    }
+    h += `<div class="sec">Pet collection</div><div class="coll">${Object.keys(PETS).map(k => {
+      const P = PETS[k], got = S.petsFound[k], claimed = S.claimP[k];
+      return `<div class="ctile ${got ? '' : 'unseen'}" style="--tc:${TIERS[P.r].c}"><span class="pe">${petHTML(P)}</span><span class="pn">${got ? P.n : '???'}</span>
+        ${claimed ? `<span class="done">✓ Claimed</span>` : got ? `<button class="claim" data-act="claimP" data-arg="${k}">+$${fmt(petReward(k))}</button>` : `<span class="pn" style="color:var(--muted)">$${fmt(petReward(k))}</span>`}</div>`;
+    }).join('')}</div>`;
+  } else if (S.tab === 'index') {
+    const list = unlocked();
+    const tot = list.reduce((a, f) => a + weight(f), 0);
+    const seen = FRUITS.filter(f => S.found[f.id]).length;
+    const pend = pendingFruit();
+    h += head('Fruits', 'Every new fruit you find pays a one-time reward and boosts fruit value for good.');
+    h += `<div class="summary"><div><small>Fruit collection bonus</small><b>+${Math.round(Object.keys(S.claimF).length * FRUIT_BONUS * 100)}%</b> <small>${seen}/${FRUITS.length} fruits found · +${FRUIT_BONUS * 100}% per fruit claimed</small></div>
+      ${pend.length ? `<button class="claim" data-act="claimF" data-arg="${pend.map(f => f.id).join(',')}">Claim ${pend.length} reward${pend.length > 1 ? 's' : ''}</button>` : ''}</div>`;
+    for (const f of FRUITS) {
+      const lock = f.lvl > S.orchard, found = S.found[f.id];
+      const chance = lock ? 0 : weight(f) / tot * 100;
+      const sellFor = f.v * totalMult();
+      const right = found
+        ? (S.claimF[f.id] ? `<span class="done">✓ Claimed</span>` : `<button class="claim" data-act="claimF" data-arg="${f.id}">+$${fmt(fruitReward(f))}</button>`)
+        : `<small>Reward $${fmt(fruitReward(f))}</small>`;
+      h += `<div class="frow ${lock ? 'locked' : ''} ${found ? '' : 'unseen'}">
+        <div class="fe">${fruitHTML(f)}</div>
+        <div><div class="nm">${found ? f.n : '???'}</div><div class="rt">${tierName(f.tier)} · ${lock ? 'Unlocks at ' + ORCHARDS[f.lvl].n : (chance < 0.1 ? chance.toFixed(3) : chance.toFixed(1)) + '% chance'} · sells $${sellFor < 1000 ? fmtM(sellFor) : fmt(sellFor)}</div></div>
+        <div class="vv">${right}</div></div>`;
+    }
+  } else {
+    const cost = rebirthCost(), can = S.money >= cost;
+    h += head('Rebirth', 'Trade your progress for a permanent boost that stacks every time.');
+    h += `<div class="sec">Your fruit value</div><div>
+      <div class="statrow"><span>🧃 Juicier Fruit</span><b>×${fmtM(juiceMult())}</b></div>
+      <div class="statrow"><span>🐾 Equipped pets</span><b>×${fmtM(petMult())}</b></div>
+      <div class="statrow"><span>🏆 Collection rewards</span><b>×${fmtM(collectionMult())}</b></div>
+      <div class="statrow"><span>🔄 Rebirths</span><b>×${rebirthMult()}</b></div>
+      <div class="statrow"><span>Total</span><b style="color:var(--buy-d)">×${fmtM(totalMult())}</b></div></div>`;
+    h += `<div class="big"><h2>Rebirth ${S.rebirths ? '#' + (S.rebirths + 1) : ''}</h2>
+      <p>You lose cash, basket, upgrades and orchard progress. You keep your pets, collections and claimed rewards.</p>
+      <div class="statrow"><span>Current boost</span><b>×${rebirthMult()}</b></div>
+      <div class="statrow"><span>After rebirth</span><b style="color:var(--buy-d)">×${rebirthMult() + 1}</b></div>
+      <div class="statrow"><span>Cost</span><b>$${fmt(cost)}</b></div>
+      <div class="prog"><i id="rbProg"></i></div>
+      <button class="buy ${armed === 'rebirth' ? 'warn' : ''}" data-act="rebirth" data-cost="${cost}" ${can ? '' : 'disabled'}>${armed === 'rebirth' ? 'Click again to rebirth' : 'Rebirth for $' + fmt(cost)}</button></div>`;
+    h += `<div class="sec">Stats</div>
+      <div><div class="statrow"><span>Total money earned</span><b>$${fmt(S.stats.earned)}</b></div>
+      <div class="statrow"><span>Fruit picked</span><b>${fmt(S.stats.picked)}</b></div>
+      <div class="statrow"><span>Clicks</span><b>${fmt(S.stats.clicks)}</b></div>
+      <div class="statrow"><span>Eggs hatched</span><b>${fmt(S.stats.hatched)}</b></div>
+      <div class="statrow"><span>Rebirths</span><b>${S.rebirths}</b></div></div>
+      <button class="buy warn" data-act="reset" style="justify-self:start">${armed === 'reset' ? 'Click again to erase everything' : 'Reset save'}</button>`;
+  }
+  body.innerHTML = h;
+  updateHUD();
+}
+
+/* ---------- save ---------- */
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
+function load() {
+  try { const raw = localStorage.getItem(SAVE_KEY); if (raw) return merge(JSON.parse(raw)); } catch (e) {}
+  return fresh();
+}
+
+/* ---------- wiring ---------- */
+function bind() {
+  stage.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    const r = stage.getBoundingClientRect();
+    harvest(e.clientX - r.left, e.clientY - r.top, false);
+  });
+  $('#sellBtn').addEventListener('click', () => sell(false));
+  document.addEventListener('keydown', e => {
+    if (e.repeat || !$('#hatch').hidden) return;
+    if (e.code === 'Space' && !(e.target.closest && e.target.closest('button'))) {
+      e.preventDefault();
+      const [x, y] = autoPoint();
+      harvest(x, y, false);
+    } else if (e.key === 's' || e.key === 'S') sell(false);
+  });
+  // clicking the open tab again closes the shop; any other tab opens it
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    if (S.panelOpen && S.tab === t.dataset.tab) S.panelOpen = false;
+    else { S.tab = t.dataset.tab; S.panelOpen = true; }
+    armed = null; renderTab(); save();
+  }));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && S.panelOpen && $('#hatch').hidden) { S.panelOpen = false; armed = null; renderTab(); save(); }
+  });
+  $('#tabbody').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b || b.disabled) return;
+    const a = b.dataset.act, arg = b.dataset.arg;
+    if (a === 'buy') buyUpgrade(arg);
+    else if (a === 'orchard') expandOrchard();
+    else if (a === 'hatch') hatch(arg);
+    else if (a === 'equip') toggleEquip(+arg);
+    else if (a === 'release') release(+arg);
+    else if (a === 'best') equipBest();
+    else if (a === 'close') { S.panelOpen = false; armed = null; renderTab(); save(); }
+    else if (a === 'claimF') claimFruit(arg.split(','));
+    else if (a === 'claimP') claimPet(arg.split(','));
+    else if (a === 'rebirth') rebirth();
+    else if (a === 'reset') resetAll();
+  });
+  $('#hOk').addEventListener('click', closeHatch);
+  $('#hatch').addEventListener('click', e => { if (e.target.id === 'hatch') closeHatch(); });
+
+  let last = performance.now(), acc = 0;
+  setInterval(() => {
+    const now = performance.now();
+    const dt = Math.min(2, (now - last) / 1000);
+    last = now;
+    if (!S.upg.auto) { acc = 0; return; }
+    acc += dt * S.upg.auto;
+    let n = 0;
+    while (acc >= 1 && n < 30) { acc--; n++; const [x, y] = autoPoint(); harvest(x, y, true); }
+  }, 50);
+  setInterval(save, 3000);
+  document.addEventListener('visibilitychange', save);
+  window.addEventListener('pagehide', save);
+}
+
+function start(data) {
+  S = data && typeof data.money === 'number' ? merge(data) : load();
+  equipped().slice(petSlots()).forEach(p => { p.eq = false; });
+  buildSpots();
+  bind();
+  renderPets();
+  renderTab();
+  if (S.stats.clicks > 8) $('#hint').style.opacity = 0;
+  try { window.claude?.hot?.snapshot?.(() => S); } catch (e) {}
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
+
+</body>
+</html>
